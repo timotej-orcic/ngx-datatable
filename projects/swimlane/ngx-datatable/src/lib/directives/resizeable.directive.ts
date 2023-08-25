@@ -9,7 +9,7 @@ import {
   AfterViewInit,
   Renderer2
 } from '@angular/core';
-import { Subscription, fromEvent } from 'rxjs';
+import { Subscription, fromEvent, merge } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 @Directive({
@@ -64,28 +64,38 @@ export class ResizeableDirective implements OnDestroy, AfterViewInit {
   }
 
   @HostListener('mousedown', ['$event'])
-  onMousedown(event: MouseEvent): void {
+  @HostListener('touchstart', ['$event'])
+  onMousedown(event: MouseEvent | TouchEvent): void {
     const isHandle = (<HTMLElement>event.target).classList.contains('resize-handle');
     const initialWidth = this.element.clientWidth;
-    const mouseDownScreenX = event.screenX;
+    const mouseDownScreenX = (<MouseEvent>event).screenX ||
+      ((<TouchEvent>event).targetTouches && (<TouchEvent>event).targetTouches[0].screenX);
 
     if (isHandle) {
       event.stopPropagation();
       this.resizing = true;
 
-      const mouseup = fromEvent(document, 'mouseup');
-      this.subscription = mouseup.subscribe((ev: MouseEvent) => this.onMouseup());
+      const mouseup = merge(
+        fromEvent(document, 'mouseup'),
+        fromEvent(document, 'touchend')
+      );
+      this.subscription = mouseup.subscribe((ev: MouseEvent | TouchEvent) => this.onMouseup());
 
-      const mouseMoveSub = fromEvent(document, 'mousemove')
+	  const mouseMoveSub = merge(
+		  fromEvent(document, 'mousemove'),
+		  fromEvent(document, 'touchmove')
+		)
         .pipe(takeUntil(mouseup))
-        .subscribe((e: MouseEvent) => this.move(e, initialWidth, mouseDownScreenX));
+        .subscribe((e: MouseEvent | TouchEvent) => this.move(e, initialWidth, mouseDownScreenX));
 
       this.subscription.add(mouseMoveSub);
     }
   }
 
-  move(event: MouseEvent, initialWidth: number, mouseDownScreenX: number): void {
-    const movementX = event.screenX - mouseDownScreenX;
+  move(event: MouseEvent | TouchEvent, initialWidth: number, mouseDownScreenX: number): void {
+    const screenX = (<MouseEvent>event).screenX ||
+      ((<TouchEvent>event).targetTouches && (<TouchEvent>event).targetTouches[0].screenX);
+    const movementX = screenX - mouseDownScreenX;
     const newWidth = initialWidth + movementX;
 
     const overMinWidth = !this.minWidth || newWidth >= this.minWidth;

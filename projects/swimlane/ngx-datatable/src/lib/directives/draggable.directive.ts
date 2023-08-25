@@ -1,5 +1,5 @@
 import { Directive, ElementRef, Input, Output, EventEmitter, OnDestroy, OnChanges, SimpleChanges } from '@angular/core';
-import { Subscription, fromEvent } from 'rxjs';
+import { Subscription, fromEvent, merge } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
 /**
@@ -39,7 +39,7 @@ export class DraggableDirective implements OnDestroy, OnChanges {
     this._destroySubscription();
   }
 
-  onMouseup(event: MouseEvent): void {
+  onMouseup(event: MouseEvent | TouchEvent): void {
     if (!this.isDragging) return;
 
     this.isDragging = false;
@@ -55,7 +55,7 @@ export class DraggableDirective implements OnDestroy, OnChanges {
     }
   }
 
-  onMousedown(event: MouseEvent): void {
+  onMousedown(event: MouseEvent | TouchEvent): void {
     // we only want to drag the inner header text
     const isDragElm = (<HTMLElement>event.target).classList.contains('draggable');
 
@@ -63,14 +63,22 @@ export class DraggableDirective implements OnDestroy, OnChanges {
       event.preventDefault();
       this.isDragging = true;
 
-      const mouseDownPos = { x: event.clientX, y: event.clientY };
+	  const clientX = (<MouseEvent>event).clientX ||
+        ((<TouchEvent>event).targetTouches && (<TouchEvent>event).targetTouches[0].clientX);
+      const clientY = (<MouseEvent>event).clientY ||
+        ((<TouchEvent>event).targetTouches && (<TouchEvent>event).targetTouches[0].clientY);
+      const mouseDownPos = { x: clientX, y: clientY };
 
-      const mouseup = fromEvent(document, 'mouseup');
-      this.subscription = mouseup.subscribe((ev: MouseEvent) => this.onMouseup(ev));
+      const mouseup = merge(
+        fromEvent(document, 'mouseup'),
+        fromEvent(document, 'touchend'));
+      this.subscription = mouseup.subscribe((ev: MouseEvent | TouchEvent) => this.onMouseup(ev));
 
-      const mouseMoveSub = fromEvent(document, 'mousemove')
+      const mouseMoveSub = merge(
+        fromEvent(document, 'mousemove'),
+        fromEvent(document, 'touchmove'))
         .pipe(takeUntil(mouseup))
-        .subscribe((ev: MouseEvent) => this.move(ev, mouseDownPos));
+        .subscribe((ev: MouseEvent | TouchEvent) => this.move(ev, mouseDownPos));
 
       this.subscription.add(mouseMoveSub);
 
@@ -82,11 +90,15 @@ export class DraggableDirective implements OnDestroy, OnChanges {
     }
   }
 
-  move(event: MouseEvent, mouseDownPos: { x: number; y: number }): void {
+  move(event: MouseEvent | TouchEvent, mouseDownPos: { x: number; y: number }): void {
     if (!this.isDragging) return;
 
-    const x = event.clientX - mouseDownPos.x;
-    const y = event.clientY - mouseDownPos.y;
+    const clientX = (<MouseEvent>event).clientX ||
+      ((<TouchEvent>event).targetTouches && (<TouchEvent>event).targetTouches[0].clientX);
+    const clientY = (<MouseEvent>event).clientY ||
+      ((<TouchEvent>event).targetTouches && (<TouchEvent>event).targetTouches[0].clientY);
+    const x = clientX - mouseDownPos.x;
+    const y = clientY - mouseDownPos.y;
 
     if (this.dragX) this.element.style.left = `${x}px`;
     if (this.dragY) this.element.style.top = `${y}px`;
